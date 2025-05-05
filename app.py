@@ -20,9 +20,39 @@ from datetime import datetime
 from docx import Document
 from docx.shared import Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from pathlib import Path
+
+# ---------------------------------------------------------------------------
+# Image handling utilities
+# ---------------------------------------------------------------------------
+
+BASE_DIR   = Path(__file__).resolve().parent
+ASSETS_DIR = BASE_DIR / "assets"
+
+def get_float_image_path() -> str:
+    """
+    Returns an absolute path to “float_image.png” located inside ./assets.
+    If the file does not exist, a harmless online placeholder is returned so
+    that the UI never shows a broken-image icon.
+    """
+    img_path = ASSETS_DIR / "float_image.png"
+
+    if img_path.exists():
+        return str(img_path)
+
+    # Fallback (any publicly available placeholder will do)
+    return "https://via.placeholder.com/150"
+
+
+# Replace the former hard-coded value
+float_image_path: str = get_float_image_path()
 
 # Set page config - must be the first Streamlit command
-st.set_page_config(page_title="CSV to Document Converter", layout="wide")
+st.set_page_config(page_title="CSV to Document Converter", layout="wide", page_icon="favicon.png")
+
+float_image_path = os.path.join(os.path.dirname(__file__), "assets", "favicon_transparent.png")
+st.write(f"Image path: {float_image_path}")
+# st.image(float_image_path, use_container_width=False, caption="Your Image", width=150)
 
 # Create a data directory if it doesn't exist
 def ensure_data_dir_exists():
@@ -416,297 +446,309 @@ if "dataframes" not in st.session_state:
 # Get the current user ID
 user_id = get_user_id()
 
-st.title("CSV to Document Converter")
-st.write("""
-Upload one or more CSV files. Each loaded CSV is displayed in its own table.
-You can convert each to different document formats.
-""")
+col_img, col_body = st.columns([1, 10])      # adjust ratios to your liking
 
-# Display user history in an expander
-with st.expander("Your CSV History", expanded=False):
-    try:
-        user_history = get_user_history(user_id)
-        if user_history:
-            st.write("Previously uploaded CSV files (click to load):")
-            for idx, entry in enumerate(user_history):
-                if isinstance(entry, dict) and 'file_name' in entry and 'timestamp' in entry:
-                    # If entry has cache_id, make it clickable
-                    if 'cache_id' in entry:
-                        if st.button(f"Load: {entry['file_name']}", key=f"history_{idx}"):
-                            # Load the cached CSV
-                            df = get_cached_csv(entry['cache_id'])
-                            if df is not None:
-                                # Add to dataframes list if not already there
-                                if not any(df.equals(existing_df) for existing_df in st.session_state.dataframes):
-                                    st.session_state.dataframes.append(df)
-                                    st.success(f"Loaded {entry['file_name']} from history")
-                                    st.rerun()
-                                else:
-                                    st.info(f"{entry['file_name']} is already loaded")
-                            else:
-                                st.error(f"Could not load {entry['file_name']} from cache")
-                        # Display timestamp separately
-                        st.caption(f"Uploaded: {entry['timestamp']}")
-                    else:
-                        # For entries without cache_id, just display them
-                        st.write(f"{idx+1}. **{entry['file_name']}** - {entry['timestamp']}")
-                elif isinstance(entry, str):
-                    # Handle legacy entries that might only contain filenames
-                    st.write(f"{idx+1}. **{entry}**")
-                else:
-                    st.write(f"{idx+1}. **Unknown entry format**")
+with col_img:
+    st.image(float_image_path, width=150)
+
+with col_body:
+    st.write("""
+        This text appears to the right of the image, so it feels very
+        similar to an HTML float-left.  
+        You can put any other Streamlit widgets here as well.
+    """)
+
+    st.title("CSV to Document Converter")
+    st.write("""
+    Upload one or more CSV files. Each loaded CSV is displayed in its own table.
+    You can convert each to different document formats.
+    """)
+
+    # Display cached CSVs for the current session
+    with st.expander("Current Session Cache", expanded=False):
+        cached_csvs = get_all_cached_csvs()
+        if cached_csvs:
+            st.write("CSVs cached in current session:")
+            for cache_id, cache_info in cached_csvs.items():
+                # Create a button to reload this CSV
+                if st.button(f"Load: {cache_info['file_name']}", key=f"load_{cache_id}"):
+                    # Add this cached CSV to dataframes for processing
+                    df = cache_info['df']
+                    if df is not None and not any(df.equals(existing_df) for existing_df in st.session_state.dataframes):
+                        st.session_state.dataframes.append(df)
+                        st.success(f"Loaded cached CSV: {cache_info['file_name']}")
+                        st.rerun()
         else:
-            st.write("No CSV files have been uploaded yet.")
-    except Exception as e:
-        st.error(f"Error loading user history: {e}")
-        # Option 1: Just show plain error (preferred)
-        st.error(f"Exception: {traceback.format_exc()}")
-        # Option 2: For HTML formatting, use markdown (if you really need HTML line breaks)
-        # st.markdown(f"**Exception:**<br>{traceback.format_exc().replace(chr(10), '<br>')}", unsafe_allow_html=True)
+            st.write("No CSVs are cached in the current session.")
 
-# Display cached CSVs for the current session
-with st.expander("Current Session Cache", expanded=False):
-    cached_csvs = get_all_cached_csvs()
-    if cached_csvs:
-        st.write("CSVs cached in current session:")
-        for cache_id, cache_info in cached_csvs.items():
-            # Create a button to reload this CSV
-            if st.button(f"Load: {cache_info['file_name']}", key=f"load_{cache_id}"):
-                # Add this cached CSV to dataframes for processing
-                df = cache_info['df']
-                if df is not None and not any(df.equals(existing_df) for existing_df in st.session_state.dataframes):
-                    st.session_state.dataframes.append(df)
-                    st.success(f"Loaded cached CSV: {cache_info['file_name']}")
-                    st.rerun()
-    else:
-        st.write("No CSVs are cached in the current session.")
+    # File uploader
+    uploaded_file = st.file_uploader("Choose a CSV file", type="csv", key="upload")
 
-# File uploader
-uploaded_file = st.file_uploader("Choose a CSV file", type="csv", key="upload")
+    if uploaded_file is not None:
+        try:
+            df = pd.read_csv(uploaded_file, dtype=str)
 
-if uploaded_file is not None:
-    try:
-        df = pd.read_csv(uploaded_file, dtype=str)
+            # Add to dataframes list
+            st.session_state.dataframes.append(df)
 
-        # Add to dataframes list
-        st.session_state.dataframes.append(df)
+            # Cache the CSV and get the cache_id
+            cache_id = cache_csv(df, uploaded_file.name)
 
-        # Cache the CSV and get the cache_id
-        cache_id = cache_csv(df, uploaded_file.name)
+            # Add to user history with the cache_id
+            save_to_user_history(user_id, uploaded_file.name, cache_id)
 
-        # Add to user history with the cache_id
-        save_to_user_history(user_id, uploaded_file.name, cache_id)
+            st.success(f"Successfully loaded CSV with {df.shape[0]} rows and {df.shape[1]} columns.")
+            # download_format = st.selectbox("Format", ["csv", "html", "docx"])
+            # enable_grouping = st.checkbox("Group by column")
+            # if enable_grouping:
+            #     # switch to a single‐select so df[group_col] is a Series
+            #     group_col = st.selectbox("Select column to group by", df.columns)
+            #     unique_vals = df[group_col].unique().tolist()
+            #     # let user pick exactly one group
+            #     chosen = st.selectbox("Which group to preview?", unique_vals)
+            #     subset = df[df[group_col] == chosen]
+            #     st.markdown(
+            #         get_data_preview_and_download_options(subset, download_format),
+            #         unsafe_allow_html=True
+            #     )
+            # else:
+            #     st.markdown(
+            #         get_data_preview_and_download_options(df, download_format),
+            #         unsafe_allow_html=True
+            #     )
 
-        st.success(f"Successfully loaded CSV with {df.shape[0]} rows and {df.shape[1]} columns.")
-        # download_format = st.selectbox("Format", ["csv", "html", "docx"])
-        # enable_grouping = st.checkbox("Group by column")
-        # if enable_grouping:
-        #     # switch to a single‐select so df[group_col] is a Series
-        #     group_col = st.selectbox("Select column to group by", df.columns)
-        #     unique_vals = df[group_col].unique().tolist()
-        #     # let user pick exactly one group
-        #     chosen = st.selectbox("Which group to preview?", unique_vals)
-        #     subset = df[df[group_col] == chosen]
-        #     st.markdown(
-        #         get_data_preview_and_download_options(subset, download_format),
-        #         unsafe_allow_html=True
-        #     )
-        # else:
-        #     st.markdown(
-        #         get_data_preview_and_download_options(df, download_format),
-        #         unsafe_allow_html=True
-        #     )
+        except Exception as e:
+            st.error(f"Error processing the file")
+            st.error(f"Exception occurred")
+            st.markdown(f"**Exception:**<br>{traceback.format_exc().replace('\n', '<br>')}", unsafe_allow_html=True)
 
-    except Exception as e:
-        st.error(f"Error processing the file")
-        st.error(f"Exception occurred")
-        st.markdown(f"**Exception:**<br>{traceback.format_exc().replace('\n', '<br>')}", unsafe_allow_html=True)
+    # Display all loaded CSVs in separate tables
+    for idx, df in enumerate(st.session_state.dataframes):
+        with st.expander(f"Data Table", expanded=True):
+            st.subheader(f"Data Preview - Table")
+            st.text(f"Loaded {df.shape[0]} rows and {df.shape[1]} columns.")
+            st.dataframe(df.head(10))
 
-# Display all loaded CSVs in separate tables
-for idx, df in enumerate(st.session_state.dataframes):
-    with st.expander(f"Data Table", expanded=True):
-        st.subheader(f"Data Preview - Table")
-        st.text(f"Loaded {df.shape[0]} rows and {df.shape[1]} columns.")
-        st.dataframe(df.head(10))
+            # Document title input per dataframe
+            doc_title = st.text_input(f"Document Title for Table",
+                                     f"Data Document {idx+1}",
+                                     key=f"title_{idx}")
 
-        # Document title input per dataframe
-        doc_title = st.text_input(f"Document Title for Table",
-                                 f"Data Document {idx+1}",
-                                 key=f"title_{idx}")
+            # Grouping, sorting, and filtering in tabs
+            tab1, tab2, tab3 = st.tabs(["Grouping", "Sorting", "Filtering"])
 
-        # Grouping, sorting, and filtering in tabs
-        tab1, tab2, tab3 = st.tabs(["Grouping", "Sorting", "Filtering"])
+            with tab1:
+                enable_grouping = st.checkbox("Enable grouping by column", key=f"grouping_{idx}")
+                group_cols = []
+                if enable_grouping and len(df.columns) > 0:
+                    group_cols = st.multiselect("Select column(s) to group by", df.columns, key=f"group_col_{idx}")
 
-        with tab1:
-            enable_grouping = st.checkbox("Enable grouping by column", key=f"grouping_{idx}")
-            group_cols = []
-            if enable_grouping and len(df.columns) > 0:
-                group_cols = st.multiselect("Select column(s) to group by", df.columns, key=f"group_col_{idx}")
+            with tab2:
+                enable_sorting = st.checkbox("Enable sorting", key=f"sort_enable_{idx}")
+                sort_cols = []
+                ascending = True
+                if enable_sorting:
+                    sort_cols = st.multiselect("Select column(s) to sort by",
+                                            options=df.columns,
+                                            key=f"sort_cols_{idx}")
+                    sort_order = st.selectbox("Sort order", ("Ascending", "Descending"), key=f"sort_order_{idx}")
+                    ascending = sort_order == "Ascending"
 
-        with tab2:
-            enable_sorting = st.checkbox("Enable sorting", key=f"sort_enable_{idx}")
-            sort_cols = []
-            ascending = True
-            if enable_sorting:
-                sort_cols = st.multiselect("Select column(s) to sort by",
-                                        options=df.columns,
-                                        key=f"sort_cols_{idx}")
-                sort_order = st.selectbox("Sort order", ("Ascending", "Descending"), key=f"sort_order_{idx}")
-                ascending = sort_order == "Ascending"
+            with tab3:
+                enable_filtering = st.checkbox("Enable filtering", key=f"filter_enable_{idx}")
+                filter_conditions = {}
+                include_columns = []
+                exclude_columns = []
 
-        with tab3:
-            enable_filtering = st.checkbox("Enable filtering", key=f"filter_enable_{idx}")
-            filter_conditions = {}
-            include_columns = []
-            exclude_columns = []
+                if enable_filtering:
+                    # Value filtering
+                    st.subheader("Filter by values")
+                    filter_cols = st.multiselect("Select column(s) to filter by value",
+                                              options=df.columns,
+                                              key=f"filter_cols_{idx}")
+                    for col in filter_cols:
+                        unique_values = df[col].dropna().unique().tolist()
+                        selected_values = st.multiselect(f"Select values for {col}",
+                                                     options=unique_values,
+                                                     key=f"filter_values_{idx}_{col}")
+                        if selected_values:
+                            filter_conditions[col] = selected_values
 
-            if enable_filtering:
-                # Value filtering
-                st.subheader("Filter by values")
-                filter_cols = st.multiselect("Select column(s) to filter by value",
-                                          options=df.columns,
-                                          key=f"filter_cols_{idx}")
-                for col in filter_cols:
-                    unique_values = df[col].dropna().unique().tolist()
-                    selected_values = st.multiselect(f"Select values for {col}",
-                                                 options=unique_values,
-                                                 key=f"filter_values_{idx}_{col}")
-                    if selected_values:
-                        filter_conditions[col] = selected_values
-
-                # Column filtering
-                st.subheader("Filter by columns")
-                column_filter_type = st.radio(
-                    "Column filtering type",
-                    ["None", "Include only", "Exclude only"],
-                    key=f"column_filter_type_{idx}"
-                )
-
-                if column_filter_type == "Include only":
-                    include_columns = st.multiselect(
-                        "Select columns to include in the output",
-                        options=df.columns,
-                        key=f"include_columns_{idx}"
-                    )
-                elif column_filter_type == "Exclude only":
-                    exclude_columns = st.multiselect(
-                        "Select columns to exclude from the output",
-                        options=df.columns,
-                        key=f"exclude_columns_{idx}"
+                    # Column filtering
+                    st.subheader("Filter by columns")
+                    column_filter_type = st.radio(
+                        "Column filtering type",
+                        ["None", "Include only", "Exclude only"],
+                        key=f"column_filter_type_{idx}"
                     )
 
-        # Apply transformations to create the processed dataframe
-        processed_df = df.copy()
+                    if column_filter_type == "Include only":
+                        include_columns = st.multiselect(
+                            "Select columns to include in the output",
+                            options=df.columns,
+                            key=f"include_columns_{idx}"
+                        )
+                    elif column_filter_type == "Exclude only":
+                        exclude_columns = st.multiselect(
+                            "Select columns to exclude from the output",
+                            options=df.columns,
+                            key=f"exclude_columns_{idx}"
+                        )
 
-        # Apply value filtering
-        for col, values in filter_conditions.items():
-            processed_df = processed_df[processed_df[col].isin(values)]
+            # Apply transformations to create the processed dataframe
+            processed_df = df.copy()
 
-        # Apply column filtering (include or exclude)
-        if include_columns:
-            processed_df = processed_df[include_columns]
-        elif exclude_columns:
-            processed_df = processed_df.drop(columns=exclude_columns)
+            # Apply value filtering
+            for col, values in filter_conditions.items():
+                processed_df = processed_df[processed_df[col].isin(values)]
 
-        # Apply sorting
-        if enable_sorting and sort_cols:
-            processed_df = processed_df.sort_values(by=sort_cols, ascending=ascending)
+            # Apply column filtering (include or exclude)
+            if include_columns:
+                processed_df = processed_df[include_columns]
+            elif exclude_columns:
+                processed_df = processed_df.drop(columns=exclude_columns)
 
-        # Download options
-        st.subheader(f"Download Options for Table")
-        download_format = st.radio("Select download format",
-                                 ["CSV", "HTML", "DOCX"],
-                                 key=f"download_format_{idx}")
+            # Apply sorting
+            if enable_sorting and sort_cols:
+                processed_df = processed_df.sort_values(by=sort_cols, ascending=ascending)
 
-        if st.button(f"Generate Document for Table"):
-            if download_format == "CSV":
-                csv_data = convert_df_to_csv(processed_df)
-                st.download_button(
-                    label=f"Download CSV - Table",
-                    data=csv_data,
-                    file_name=f"data_export_{idx+1}.csv",
-                    mime="text/csv",
-                    on_click="ignore"
-                )
-            elif download_format == "HTML":
-                if enable_grouping and group_cols:
-                    html_data = convert_df_to_grouped_html(processed_df, group_cols, doc_title)
-                    html_bytes = html_data.encode('utf-8')  # Convert string to bytes
-                else:
-                    html_data = convert_df_to_html(processed_df, doc_title)
-                    html_bytes = html_data.encode('utf-8') if isinstance(html_data, str) else html_data
+            # Download options
+            st.subheader(f"Download Options for Table")
+            download_format = st.radio("Select download format",
+                                     ["CSV", "HTML", "DOCX"],
+                                     key=f"download_format_{idx}")
 
-                st.download_button(
-                    label=f"Download HTML - Table",
-                    data=html_bytes,
-                    file_name=f"grouped_data_{idx+1}.html" if enable_grouping and group_cols else f"data_{idx+1}.html",
-                    mime="text/html",
-                    on_click="ignore"
-                )
-            elif download_format == "DOCX":
-                # Similar handling for DOCX format
-                if enable_grouping and group_cols:
-                    docx_data = convert_df_to_grouped_docx(processed_df, group_cols, doc_title)
-                else:
-                    docx_data = convert_df_to_docx(processed_df, doc_title)
-                st.download_button(
-                    label=f"Download DOCX - Table",
-                    data=docx_data,
-                    file_name=f"grouped_data_{idx+1}.docx" if enable_grouping and group_cols else f"data_{idx+1}.docx",
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    on_click="ignore"
-                )
-    break
+            if st.button(f"Generate Document for Table"):
+                if download_format == "CSV":
+                    csv_data = convert_df_to_csv(processed_df)
+                    st.download_button(
+                        label=f"Download CSV - Table",
+                        data=csv_data,
+                        file_name=f"data_export_{idx+1}.csv",
+                        mime="text/csv",
+                        on_click="ignore"
+                    )
+                elif download_format == "HTML":
+                    if enable_grouping and group_cols:
+                        html_data = convert_df_to_grouped_html(processed_df, group_cols, doc_title)
+                        html_bytes = html_data.encode('utf-8')  # Convert string to bytes
+                    else:
+                        html_data = convert_df_to_html(processed_df, doc_title)
+                        html_bytes = html_data.encode('utf-8') if isinstance(html_data, str) else html_data
 
-# Footer
-st.markdown("---")
-st.markdown("CSV to Document Converter | Created with Streamlit")
-st.markdown("This app allows you to upload a CSV file and convert it to different document formats. You can also group the data by a column to create separate tables for each unique value.")
-st.markdown("**Note:** Make sure to upload a valid CSV file.")
-st.markdown("**Disclaimer:** This app is for educational purposes only. Please ensure you have the right to use any data you upload.")
-# ─────────────────────────────────────────────────────────────────────────────
-#  CONVERT A DATAFRAME TO GROUPED HTML
-# ─────────────────────────────────────────────────────────────────────────────
-def convert_df_to_grouped_html(
-    df: pd.DataFrame,
-    group_cols: list[str],
-    doc_title: str | None = None,        # ← NEW, optional third parameter
-) -> str:
-    """
-    Convert a DataFrame to an HTML string, grouped by the specified columns.
+                    st.download_button(
+                        label=f"Download HTML - Table",
+                        data=html_bytes,
+                        file_name=f"grouped_data_{idx+1}.html" if enable_grouping and group_cols else f"data_{idx+1}.html",
+                        mime="text/html",
+                        on_click="ignore"
+                    )
+                elif download_format == "DOCX":
+                    # Similar handling for DOCX format
+                    if enable_grouping and group_cols:
+                        docx_data = convert_df_to_grouped_docx(processed_df, group_cols, doc_title)
+                    else:
+                        docx_data = convert_df_to_docx(processed_df, doc_title)
+                    st.download_button(
+                        label=f"Download DOCX - Table",
+                        data=docx_data,
+                        file_name=f"grouped_data_{idx+1}.docx" if enable_grouping and group_cols else f"data_{idx+1}.docx",
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        on_click="ignore"
+                    )
+        break
 
-    Parameters
-    ----------
-    df         : pd.DataFrame
-        The data that will be rendered.
-    group_cols : list[str]
-        Column names to group by.
-    doc_title  : str | None, optional
-        An optional document title.  If supplied, a corresponding
-        <h1> header is inserted at the top of the generated HTML.
+    # Footer
+    st.markdown("---")
+    st.markdown("CSV to Document Converter | Created with Streamlit")
+    st.markdown("This app allows you to upload a CSV file and convert it to different document formats. You can also group the data by a column to create separate tables for each unique value.")
+    st.markdown("**Note:** Make sure to upload a valid CSV file.")
+    st.markdown("**Disclaimer:** This app is for educational purposes only. Please ensure you have the right to use any data you upload.")
+    # ─────────────────────────────────────────────────────────────────────────────
+    #  CONVERT A DATAFRAME TO GROUPED HTML
+    # ─────────────────────────────────────────────────────────────────────────────
+    def convert_df_to_grouped_html(
+        df: pd.DataFrame,
+        group_cols: list[str],
+        doc_title: str | None = None,        # ← NEW, optional third parameter
+    ) -> str:
+        """
+        Convert a DataFrame to an HTML string, grouped by the specified columns.
 
-    Returns
-    -------
-    str
-        The rendered HTML string.
-    """
-    html_parts: list[str] = []
+        Parameters
+        ----------
+        df         : pd.DataFrame
+            The data that will be rendered.
+        group_cols : list[str]
+            Column names to group by.
+        doc_title  : str | None, optional
+            An optional document title.  If supplied, a corresponding
+            <h1> header is inserted at the top of the generated HTML.
 
-    # Add an overall title when requested
-    if doc_title:
-        html_parts.append(f"<h1>{doc_title}</h1>")
+        Returns
+        -------
+        str
+            The rendered HTML string.
+        """
+        html_parts: list[str] = []
 
-    # Group the DataFrame and render each subgroup
-    grouped = df.groupby(group_cols, dropna=False)
+        # Add an overall title when requested
+        if doc_title:
+            html_parts.append(f"<h1>{doc_title}</h1>")
 
-    for keys, group in grouped:
-        # Ensure *keys* is always iterable
-        keys = (keys,) if not isinstance(keys, tuple) else keys
-        group_name = ", ".join(f"{col}: {val}" for col, val in zip(group_cols, keys))
+        # Group the DataFrame and render each subgroup
+        grouped = df.groupby(group_cols, dropna=False)
 
-        html_parts.append(f"<h2>{group_name}</h2>")
-        html_parts.append(
-            group.to_html(index=False, escape=False, border=0, classes="dataframe")
-        )
+        for keys, group in grouped:
+            # Ensure *keys* is always iterable
+            keys = (keys,) if not isinstance(keys, tuple) else keys
+            group_name = ", ".join(f"{col}: {val}" for col, val in zip(group_cols, keys))
 
-    return "\n".join(html_parts)
+            html_parts.append(f"<h2>{group_name}</h2>")
+            html_parts.append(
+                group.to_html(index=False, escape=False, border=0, classes="dataframe")
+            )
+
+        return "\n".join(html_parts)
+
+    # Display user history in an expander
+    with st.expander("Your CSV History", expanded=False):
+        try:
+            user_history = get_user_history(user_id)
+            if user_history:
+                st.write("Previously uploaded CSV files (click to load):")
+                for idx, entry in enumerate(user_history):
+                    if isinstance(entry, dict) and 'file_name' in entry and 'timestamp' in entry:
+                        # If entry has cache_id, make it clickable
+                        if 'cache_id' in entry:
+                            if st.button(f"Load: {entry['file_name']}", key=f"history_{idx}"):
+                                # Load the cached CSV
+                                df = get_cached_csv(entry['cache_id'])
+                                if df is not None:
+                                    # Add to dataframes list if not already there
+                                    if not any(df.equals(existing_df) for existing_df in st.session_state.dataframes):
+                                        st.session_state.dataframes.append(df)
+                                        st.success(f"Loaded {entry['file_name']} from history")
+                                        st.rerun()
+                                    else:
+                                        st.info(f"{entry['file_name']} is already loaded")
+                                else:
+                                    st.error(f"Could not load {entry['file_name']} from cache")
+                            # Display timestamp separately
+                            st.caption(f"Uploaded: {entry['timestamp']}")
+                        else:
+                            # For entries without cache_id, just display them
+                            st.write(f"{idx+1}. **{entry['file_name']}** - {entry['timestamp']}")
+                    elif isinstance(entry, str):
+                        # Handle legacy entries that might only contain filenames
+                        st.write(f"{idx+1}. **{entry}**")
+                    else:
+                        st.write(f"{idx+1}. **Unknown entry format**")
+            else:
+                st.write("No CSV files have been uploaded yet.")
+        except Exception as e:
+            st.error(f"Error loading user history: {e}")
+            # Option 1: Just show plain error (preferred)
+            st.error(f"Exception: {traceback.format_exc()}")
+            # Option 2: For HTML formatting, use markdown (if you really need HTML line breaks)
+            # st.markdown(f"**Exception:**<br>{traceback.format_exc().replace(chr(10), '<br>')}", unsafe_allow_html=True)

@@ -144,11 +144,13 @@ def ensure_csv_cache_dir_exists():
     """Create the CSV cache directory if it doesn't exist"""
     os.makedirs("data/csv_cache", exist_ok=True)
 
-def get_file_hash(df):
-    """Generate a hash for the DataFrame content to use as identifier"""
-    # Convert DataFrame to CSV string and hash it
+def get_file_hash(df, file_name):
+    """Generate a hash for the DataFrame content and file name to use as identifier"""
+    # Convert DataFrame to CSV string and combine with file name before hashing
     csv_string = df.to_csv(index=False)
-    return str(hash(csv_string))
+    # Combine file name and content to ensure uniqueness even for identical content
+    combined_string = f"{file_name}_{csv_string}"
+    return str(hash(combined_string))
 
 def cache_csv(df, file_name, options=None):
     """
@@ -167,20 +169,30 @@ def cache_csv(df, file_name, options=None):
     # Ensure cache directory exists
     ensure_csv_cache_dir_exists()
 
-    # Generate a hash for the file content
-    file_hash = get_file_hash(df)
+    # Generate a hash for the file content and name
+    file_hash = get_file_hash(df, file_name)
 
     # Check if we already have this file in the cache
     cache_path = f"data/csv_cache/{file_hash}.csv"
-    options_path = f"data/csv_cache/{file_hash}_options.json"
+
+    # Get current user ID for user-specific options
+    user_id = get_user_id()
+
+    # Create user-specific options directory if it doesn't exist
+    user_options_dir = f"data/users/{user_id}/options"
+    os.makedirs(user_options_dir, exist_ok=True)
+
+    # Define paths for global and user-specific options
+    global_options_path = f"data/csv_cache/{file_hash}_options.json"
+    user_options_path = f"{user_options_dir}/{file_hash}_options.json"
 
     # Save to disk cache if not already there
     if not os.path.exists(cache_path):
         df.to_csv(cache_path, index=False)
 
-    # Save options to disk if provided
+    # Save options to user-specific path if provided
     if options:
-        with open(options_path, 'w', encoding='utf-8') as f:
+        with open(user_options_path, 'w', encoding='utf-8') as f:
             json.dump(options, f)
 
     # Update the uploaded_files_history.json
@@ -197,9 +209,16 @@ def cache_csv(df, file_name, options=None):
     history[file_hash] = {
         "file_name": file_name,
         "cache_path": cache_path,
-        "options_path": options_path if options else None,
+        "options_path": global_options_path,  # Keep this for backward compatibility
         "timestamp": datetime.now().isoformat()
     }
+
+    # Also store the file name to options mapping
+    if "file_options" not in history:
+        history["file_options"] = {}
+
+    # We no longer update global options mapping
+    # This is now handled per user
 
     with open(history_path, 'w', encoding='utf-8') as f:
         json.dump(history, f)
@@ -220,7 +239,7 @@ def cache_csv(df, file_name, options=None):
 def get_cached_csv(cache_id):
     """
     Retrieve DataFrame and options from cache (session or disk)
-    Returns a tuple (DataFrame, options) or (DataFrame, None) if options not found
+    Returns a tuple (DataFrame, options) or (DataFrame, default_options) if options not found
     Returns (None, None) if DataFrame not found
     """
     # First try session cache
@@ -230,27 +249,78 @@ def get_cached_csv(cache_id):
 
     # If not in session, try disk cache
     cache_path = f"data/csv_cache/{cache_id}.csv"
-    options_path = f"data/csv_cache/{cache_id}_options.json"
+
+    # Get current user ID for user-specific options
+    user_id = get_user_id()
+
+    # Define paths for global and user-specific options
+    global_options_path = f"data/csv_cache/{cache_id}_options.json"
+    user_options_path = f"data/users/{user_id}/options/{cache_id}_options.json"
 
     if os.path.exists(cache_path):
         try:
             df = pd.read_csv(cache_path, dtype=str)
 
-            # Try to load options if they exist
+            # Get file name from history
+            file_name = get_file_name_from_history(cache_id)
+
+            # Try to load options if they exist - first check user-specific options
             options = None
-            if os.path.exists(options_path):
+
+            # First try user-specific options
+            if os.path.exists(user_options_path):
                 try:
-                    with open(options_path, 'r', encoding='utf-8') as f:
+                    with open(user_options_path, 'r', encoding='utf-8') as f:
                         options = json.load(f)
                 except Exception as e:
-                    st.warning(f"Error loading options: {e}")
+                    st.warning(f"Error loading user options: {e}")
+
+            # If no user-specific options, try global options (for backward compatibility)
+            if options is None and os.path.exists(global_options_path):
+                try:
+                    with open(global_options_path, 'r', encoding='utf-8') as f:
+                        options = json.load(f)
+                except Exception as e:
+                    st.warning(f"Error loading global options: {e}")
+
+            # If options still not found, try to get them from file name mapping
+            if options is None:
+                # Check if we have options for this file name in history
+                history_path = "uploaded_files_history.json"
+                if os.path.exists(history_path):
+                    with open(history_path, 'r', encoding='utf-8') as f:
+                        try:
+                            history = json.load(f)
+                            if "file_options" in history and file_name in history["file_options"]:
+                                options = history["file_options"][file_name]
+                        except json.JSONDecodeError:
+                            pass
+
+            # If still no options, use default options
+            if options is None:
+                options = {
+                    "grouping": {
+                        "enabled": False,
+                        "columns": []
+                    },
+                    "sorting": {
+                        "enabled": False,
+                        "columns": [],
+                        "order": "Ascending"
+                    },
+                    "filtering": {
+                        "enabled": False,
+                        "filter_columns": [],
+                        "filter_conditions": {},
+                        "column_filter_type": "None",
+                        "include_columns": [],
+                        "exclude_columns": []
+                    }
+                }
 
             # Add to session cache for future use
             if "csv_cache" not in st.session_state:
                 st.session_state.csv_cache = {}
-
-            # Get file name from history
-            file_name = get_file_name_from_history(cache_id)
 
             st.session_state.csv_cache[cache_id] = {
                 "df": df,
@@ -719,7 +789,12 @@ with col_body:
 
             # Apply sorting
             if enable_sorting and sort_cols:
-                processed_df = processed_df.sort_values(by=sort_cols, ascending=ascending)
+                # Filter sort_cols to only include columns that exist in the DataFrame
+                valid_sort_cols = [col for col in sort_cols if col in processed_df.columns]
+                if valid_sort_cols:
+                    processed_df = processed_df.sort_values(by=valid_sort_cols, ascending=ascending)
+                else:
+                    st.warning(f"None of the selected sort columns exist in the filtered DataFrame. Sorting skipped.")
 
             # Collect current options
             current_options = {

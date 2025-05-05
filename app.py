@@ -281,6 +281,9 @@ def convert_df_to_html(df, doc_title=None):
         border: 1px solid black;
         border-collapse: collapse;
         padding: 5px 10px;
+        margin: 5px;
+        font-size: 12px;
+        font-family: Arial, sans-serif;
       }
     </style>
     """
@@ -316,84 +319,100 @@ def convert_df_to_grouped_html(df: pd.DataFrame, group_cols: list[str], doc_titl
     return "\n".join(html_chunks)
 
 
+# Refactored DOCX conversion function with better error handling
 def convert_df_to_docx(df, title="Data Document"):
-    """Convert DataFrame to DOCX"""
-    doc = Document()
-    doc.add_heading(title, level=1).alignment = WD_ALIGN_PARAGRAPH.CENTER
+    """Convert DataFrame to DOCX and return bytes"""
+    try:
+        doc = Document()
+        doc.add_heading(title, level=1).alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-    # Add table
-    cols = list(df.columns)
-    table = doc.add_table(rows=1, cols=len(cols))
-    table.style = 'Table Grid'
+        # Add table
+        cols = list(df.columns)
+        table = doc.add_table(rows=1, cols=len(cols))
+        table.style = 'Table Grid'
 
-    # Header row
-    hdr_cells = table.rows[0].cells
-    for i, col in enumerate(cols):
-        run = hdr_cells[i].paragraphs[0].add_run(str(col))
-        run.bold = True
-        run.font.size = Pt(12)
-
-    # Data rows
-    for _, row in df.iterrows():
-        cells = table.add_row().cells
+        # Header row
+        hdr_cells = table.rows[0].cells
         for i, col in enumerate(cols):
-            run = cells[i].paragraphs[0].add_run(str(row[col]))
-            run.font.size = Pt(10)
+            run = hdr_cells[i].paragraphs[0].add_run(str(col))
+            run.bold = True
+            run.font.size = Pt(12)
 
-    # Save to bytes buffer
-    buffer = io.BytesIO()
-    doc.save(buffer)
-    buffer.seek(0)
-    return buffer.getvalue()
+        # Data rows
+        for _, row in df.iterrows():
+            cells = table.add_row().cells
+            for i, col in enumerate(cols):
+                run = cells[i].paragraphs[0].add_run(str(row[col]))
+                run.font.size = Pt(10)
 
-def convert_df_to_grouped_docx(df: pd.DataFrame, group_cols: list[str], doc_title:str) -> bytes:
+        # Save to bytes buffer
+        buffer = io.BytesIO()
+        doc.save(buffer)
+        buffer.seek(0)
+        return buffer.getvalue()
+    except Exception as e:
+        st.error(f"Error creating DOCX file: {str(e)}")
+        return None
+
+def convert_df_to_grouped_docx(df: pd.DataFrame, group_cols: list[str], doc_title: str = "") -> bytes:
     """
     Build a DOCX file where *df* is split by *group_cols*.
     Returns the binary content (bytes).
     """
-    if not group_cols:
-        return convert_df_to_docx(df)
+    try:
+        from docx import Document
+        from docx.shared import Pt
 
-    from docx import Document
-    from docx.shared import Pt
-
-    doc = Document()
-    grouped = df.groupby(group_cols)
-
-    for keys, group in grouped:
-        keys = (keys,) if not isinstance(keys, tuple) else keys
+        # Create the document
+        doc = Document()
         if doc_title:
-            title = doc_title
-        else:
+            doc.add_heading(doc_title, level=1)
+
+        # If no grouping specified, just convert the whole DataFrame
+        if not group_cols:
+            return convert_df_to_docx(df, doc_title)
+
+        grouped = df.groupby(group_cols)
+
+        # Loop through groups
+        for keys, group in grouped:
+            # Ensure `keys` is a tuple (even for a single grouping column)
+            keys = (keys,) if not isinstance(keys, tuple) else keys
+
+            # Create a heading for the group based on the keys and group columns
             heading = ", ".join(f"{col} = {val}" for col, val in zip(group_cols, keys))
-        doc.add_heading(heading, level=3)
+            doc.add_heading(heading, level=3)
 
-        # Add the table for this slice
-        table = doc.add_table(rows=1, cols=len(group.columns))
-        table.style = "Table Grid"
+            # Add the table for this group
+            table = doc.add_table(rows=1, cols=len(group.columns))
+            table.style = "Table Grid"
 
-        # Header row
-        hdr_cells = table.rows[0].cells
-        for idx, col in enumerate(group.columns):
-            hdr_cells[idx].text = str(col)
-            for paragraph in hdr_cells[idx].paragraphs:
-                for run in paragraph.runs:
-                    run.font.bold = True
-                    run.font.size = Pt(10)
+            # Add Header row
+            hdr_cells = table.rows[0].cells
+            for idx, col in enumerate(group.columns):
+                hdr_cells[idx].text = str(col)
+                for paragraph in hdr_cells[idx].paragraphs:
+                    for run in paragraph.runs:
+                        run.font.bold = True
+                        run.font.size = Pt(10)
 
-        # Data rows
-        for _, row in group.iterrows():
-            row_cells = table.add_row().cells
-            for i, value in enumerate(row):
-                row_cells[i].text = str(value)
+            # Add Data rows
+            for _, row in group.iterrows():
+                row_cells = table.add_row().cells
+                for i, value in enumerate(row):
+                    row_cells[i].text = str(value)
 
-        doc.add_paragraph()  # blank line between groups
+            doc.add_paragraph()  # Blank line between groups
 
-    # Serialize to bytes
-    from io import BytesIO
-    buffer = BytesIO()
-    doc.save(buffer)
-    return buffer.getvalue()
+        # Serialize the document to bytes
+        buffer = io.BytesIO()
+        doc.save(buffer)
+        buffer.seek(0)
+        return buffer.getvalue()
+
+    except Exception as e:
+        st.error(f"Error creating grouped DOCX file: {str(e)}")
+        return None
 
 def get_download_link(data, filename, text):
     """Generate a download link for the data"""
@@ -682,9 +701,11 @@ with col_body:
 
         return "\n".join(html_parts)
 
-    # Display user history in an expander
-    with st.expander("Your CSV History", expanded=False):
-        try:
+
+    # 🗂  USER HISTORY
+    # Expander elements have been replaced with headers to avoid nesting issues
+    try:
+        with st.expander("📅 View your previously uploaded CSV files", expanded=False):
             user_history = get_user_history(user_id)
             if user_history:
                 st.write("Previously uploaded CSV files (click to load):")
@@ -717,33 +738,13 @@ with col_body:
                         st.write(f"{idx+1}. **Unknown entry format**")
             else:
                 st.write("No CSV files have been uploaded yet.")
-                # Display cached CSVs for the current session
-                with st.expander("Current Session Cache", expanded=False):
-                    cached_csvs = get_all_cached_csvs()
-                    if cached_csvs:
-                        st.write("CSVs cached in current session:")
-                        for cache_id, cache_info in cached_csvs.items():
-                            # Create a button to reload this CSV
-                            if st.button(f"Load: {cache_info['file_name']}", key=f"load_{cache_id}"):
-                                # Add this cached CSV to dataframes for processing
-                                df = cache_info['df']
-                                if df is not None and not any(
-                                        df.equals(existing_df) for existing_df in st.session_state.dataframes):
-                                    st.session_state.dataframes.append(df)
-                                    st.success(f"Loaded cached CSV: {cache_info['file_name']}")
-                                    st.rerun()
-                    else:
-                        st.write("No CSVs are cached in the current session.")
+    except Exception as e:
+        st.error(f"Error loading user history: {e}")
+        st.markdown(f"**Exception:**<br>{traceback.format_exc().replace('\n', '<br>')}", unsafe_allow_html=True)
 
-        except Exception as e:
-            st.error(f"Error loading user history: {e}")
-            # Option 1: Just show plain error (preferred)
-            st.error(f"Exception: {traceback.format_exc()}")
-            # Option 2: For HTML formatting, use markdown (if you really need HTML line breaks)
-            # st.markdown(f"**Exception:**<br>{traceback.format_exc().replace(chr(10), '<br>')}", unsafe_allow_html=True)
-
-    # Display cached CSVs for the current session
-    with st.expander("Current Session Cache", expanded=False):
+    # Display current session cache
+    st.header("Current Session Cache")
+    try:
         cached_csvs = get_all_cached_csvs()
         if cached_csvs:
             st.write("CSVs cached in current session:")
@@ -755,7 +756,9 @@ with col_body:
                     if df is not None and not any(df.equals(existing_df) for existing_df in st.session_state.dataframes):
                         st.session_state.dataframes.append(df)
                         st.success(f"Loaded cached CSV: {cache_info['file_name']}")
-                        st.rerun()
+                        st.experimental_rerun()
         else:
             st.write("No CSVs are cached in the current session.")
-
+    except Exception as e:
+        st.error(f"Error handling session cache: {e}")
+        st.markdown(f"**Exception:**<br>{traceback.format_exc().replace('\n', '<br>')}", unsafe_allow_html=True)

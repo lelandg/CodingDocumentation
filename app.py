@@ -447,22 +447,10 @@ if "dataframes" not in st.session_state:
 user_id = get_user_id()
 
 col_img, col_body = st.columns([1, 10])      # adjust ratios to your liking
-
-with col_img:
-    st.image(float_image_path, width=150)
+col_img.image(float_image_path, use_container_width=False, width=150)
 
 with col_body:
-    st.write("""
-        This text appears to the right of the image, so it feels very
-        similar to an HTML float-left.  
-        You can put any other Streamlit widgets here as well.
-    """)
-
-    st.title("CSV to Document Converter")
-    st.write("""
-    Upload one or more CSV files. Each loaded CSV is displayed in its own table.
-    You can convert each to different document formats.
-    """)
+    # st.title("CSV to Document Converter")
 
     # File uploader
     uploaded_file = st.file_uploader("Choose a CSV file", type="csv", key="upload")

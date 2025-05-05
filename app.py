@@ -150,10 +150,19 @@ def get_file_hash(df):
     csv_string = df.to_csv(index=False)
     return str(hash(csv_string))
 
-def cache_csv(df, file_name):
+def cache_csv(df, file_name, options=None):
     """
-    Save DataFrame to session cache and disk cache with its file name
+    Save DataFrame to session cache and disk cache with its file name and options
     Returns a cache_id that can be used to retrieve the DataFrame later
+
+    Parameters:
+    -----------
+    df : pd.DataFrame
+        The DataFrame to cache
+    file_name : str
+        The name of the file
+    options : dict, optional
+        Dictionary containing grouping, sorting, and filtering options
     """
     # Ensure cache directory exists
     ensure_csv_cache_dir_exists()
@@ -163,10 +172,16 @@ def cache_csv(df, file_name):
 
     # Check if we already have this file in the cache
     cache_path = f"data/csv_cache/{file_hash}.csv"
+    options_path = f"data/csv_cache/{file_hash}_options.json"
 
     # Save to disk cache if not already there
     if not os.path.exists(cache_path):
         df.to_csv(cache_path, index=False)
+
+    # Save options to disk if provided
+    if options:
+        with open(options_path, 'w', encoding='utf-8') as f:
+            json.dump(options, f)
 
     # Update the uploaded_files_history.json
     history_path = "uploaded_files_history.json"
@@ -182,6 +197,7 @@ def cache_csv(df, file_name):
     history[file_hash] = {
         "file_name": file_name,
         "cache_path": cache_path,
+        "options_path": options_path if options else None,
         "timestamp": datetime.now().isoformat()
     }
 
@@ -195,6 +211,7 @@ def cache_csv(df, file_name):
     st.session_state.csv_cache[file_hash] = {
         "df": df,
         "file_name": file_name,
+        "options": options,
         "timestamp": datetime.now().isoformat()
     }
 
@@ -202,18 +219,31 @@ def cache_csv(df, file_name):
 
 def get_cached_csv(cache_id):
     """
-    Retrieve DataFrame from cache (session or disk)
-    Returns the DataFrame or None if not found
+    Retrieve DataFrame and options from cache (session or disk)
+    Returns a tuple (DataFrame, options) or (DataFrame, None) if options not found
+    Returns (None, None) if DataFrame not found
     """
     # First try session cache
     if "csv_cache" in st.session_state and cache_id in st.session_state.csv_cache:
-        return st.session_state.csv_cache[cache_id]["df"]
+        cache_entry = st.session_state.csv_cache[cache_id]
+        return cache_entry["df"], cache_entry.get("options")
 
     # If not in session, try disk cache
     cache_path = f"data/csv_cache/{cache_id}.csv"
+    options_path = f"data/csv_cache/{cache_id}_options.json"
+
     if os.path.exists(cache_path):
         try:
             df = pd.read_csv(cache_path, dtype=str)
+
+            # Try to load options if they exist
+            options = None
+            if os.path.exists(options_path):
+                try:
+                    with open(options_path, 'r', encoding='utf-8') as f:
+                        options = json.load(f)
+                except Exception as e:
+                    st.warning(f"Error loading options: {e}")
 
             # Add to session cache for future use
             if "csv_cache" not in st.session_state:
@@ -225,14 +255,15 @@ def get_cached_csv(cache_id):
             st.session_state.csv_cache[cache_id] = {
                 "df": df,
                 "file_name": file_name,
+                "options": options,
                 "timestamp": datetime.now().isoformat()
             }
 
-            return df
+            return df, options
         except Exception as e:
             st.error(f"Error loading cached CSV: {e}")
 
-    return None
+    return None, None
 
 def get_file_name_from_history(cache_id):
     """Get the original file name from the history"""
@@ -481,11 +512,39 @@ with col_body:
             # Add to dataframes list
             st.session_state.dataframes.append(df)
 
-            # Cache the CSV and get the cache_id
-            cache_id = cache_csv(df, uploaded_file.name)
+            # Initialize default options for the new file
+            default_options = {
+                "grouping": {
+                    "enabled": False,
+                    "columns": []
+                },
+                "sorting": {
+                    "enabled": False,
+                    "columns": [],
+                    "order": "Ascending"
+                },
+                "filtering": {
+                    "enabled": False,
+                    "filter_columns": [],
+                    "filter_conditions": {},
+                    "column_filter_type": "None",
+                    "include_columns": [],
+                    "exclude_columns": []
+                }
+            }
+
+            # Cache the CSV with default options and get the cache_id
+            cache_id = cache_csv(df, uploaded_file.name, default_options)
 
             # Add to user history with the cache_id
             save_to_user_history(user_id, uploaded_file.name, cache_id)
+
+            # Store the options in session state for this dataframe
+            if "dataframe_options" not in st.session_state:
+                st.session_state.dataframe_options = {}
+            # The index will be the length of dataframes list - 1
+            df_idx = len(st.session_state.dataframes) - 1
+            st.session_state.dataframe_options[df_idx] = default_options
 
             st.success(f"Successfully loaded CSV with {df.shape[0]} rows and {df.shape[1]} columns.")
             # download_format = st.selectbox("Format", ["csv", "html", "docx"])
@@ -527,25 +586,75 @@ with col_body:
             # Grouping, sorting, and filtering in tabs
             tab1, tab2, tab3 = st.tabs(["Grouping", "Sorting", "Filtering"])
 
+            # Check if we have saved options for this dataframe
+            saved_options = None
+            if "dataframe_options" in st.session_state and idx in st.session_state.dataframe_options:
+                saved_options = st.session_state.dataframe_options[idx]
+
             with tab1:
-                enable_grouping = st.checkbox("Enable grouping by column", key=f"grouping_{idx}")
+                # Use saved grouping options if available
+                default_enable_grouping = False
+                default_group_cols = []
+                if saved_options and "grouping" in saved_options:
+                    default_enable_grouping = saved_options["grouping"].get("enabled", False)
+                    default_group_cols = saved_options["grouping"].get("columns", [])
+
+                enable_grouping = st.checkbox("Enable grouping by column", 
+                                             value=default_enable_grouping, 
+                                             key=f"grouping_{idx}")
                 group_cols = []
                 if enable_grouping and len(df.columns) > 0:
-                    group_cols = st.multiselect("Select column(s) to group by", df.columns, key=f"group_col_{idx}")
+                    group_cols = st.multiselect("Select column(s) to group by", 
+                                               df.columns, 
+                                               default=default_group_cols,
+                                               key=f"group_col_{idx}")
 
             with tab2:
-                enable_sorting = st.checkbox("Enable sorting", key=f"sort_enable_{idx}")
+                # Use saved sorting options if available
+                default_enable_sorting = False
+                default_sort_cols = []
+                default_sort_order = "Ascending"
+                if saved_options and "sorting" in saved_options:
+                    default_enable_sorting = saved_options["sorting"].get("enabled", False)
+                    default_sort_cols = saved_options["sorting"].get("columns", [])
+                    default_sort_order = saved_options["sorting"].get("order", "Ascending")
+
+                enable_sorting = st.checkbox("Enable sorting", 
+                                           value=default_enable_sorting, 
+                                           key=f"sort_enable_{idx}")
                 sort_cols = []
                 ascending = True
                 if enable_sorting:
                     sort_cols = st.multiselect("Select column(s) to sort by",
                                             options=df.columns,
+                                            default=default_sort_cols,
                                             key=f"sort_cols_{idx}")
-                    sort_order = st.selectbox("Sort order", ("Ascending", "Descending"), key=f"sort_order_{idx}")
+                    sort_order = st.selectbox("Sort order", 
+                                            ("Ascending", "Descending"), 
+                                            index=0 if default_sort_order == "Ascending" else 1,
+                                            key=f"sort_order_{idx}")
                     ascending = sort_order == "Ascending"
 
             with tab3:
-                enable_filtering = st.checkbox("Enable filtering", key=f"filter_enable_{idx}")
+                # Use saved filtering options if available
+                default_enable_filtering = False
+                default_filter_cols = []
+                default_filter_conditions = {}
+                default_column_filter_type = "None"
+                default_include_columns = []
+                default_exclude_columns = []
+
+                if saved_options and "filtering" in saved_options:
+                    default_enable_filtering = saved_options["filtering"].get("enabled", False)
+                    default_filter_cols = saved_options["filtering"].get("filter_columns", [])
+                    default_filter_conditions = saved_options["filtering"].get("filter_conditions", {})
+                    default_column_filter_type = saved_options["filtering"].get("column_filter_type", "None")
+                    default_include_columns = saved_options["filtering"].get("include_columns", [])
+                    default_exclude_columns = saved_options["filtering"].get("exclude_columns", [])
+
+                enable_filtering = st.checkbox("Enable filtering", 
+                                             value=default_enable_filtering, 
+                                             key=f"filter_enable_{idx}")
                 filter_conditions = {}
                 include_columns = []
                 exclude_columns = []
@@ -555,11 +664,18 @@ with col_body:
                     st.subheader("Filter by values")
                     filter_cols = st.multiselect("Select column(s) to filter by value",
                                               options=df.columns,
+                                              default=default_filter_cols,
                                               key=f"filter_cols_{idx}")
                     for col in filter_cols:
                         unique_values = df[col].dropna().unique().tolist()
+                        # Get default selected values for this column if available
+                        default_values = default_filter_conditions.get(col, [])
+                        # Filter default values to ensure they exist in the current unique values
+                        valid_default_values = [v for v in default_values if v in unique_values]
+
                         selected_values = st.multiselect(f"Select values for {col}",
                                                      options=unique_values,
+                                                     default=valid_default_values,
                                                      key=f"filter_values_{idx}_{col}")
                         if selected_values:
                             filter_conditions[col] = selected_values
@@ -569,6 +685,7 @@ with col_body:
                     column_filter_type = st.radio(
                         "Column filtering type",
                         ["None", "Include only", "Exclude only"],
+                        index=["None", "Include only", "Exclude only"].index(default_column_filter_type),
                         key=f"column_filter_type_{idx}"
                     )
 
@@ -576,12 +693,14 @@ with col_body:
                         include_columns = st.multiselect(
                             "Select columns to include in the output",
                             options=df.columns,
+                            default=default_include_columns,
                             key=f"include_columns_{idx}"
                         )
                     elif column_filter_type == "Exclude only":
                         exclude_columns = st.multiselect(
                             "Select columns to exclude from the output",
                             options=df.columns,
+                            default=default_exclude_columns,
                             key=f"exclude_columns_{idx}"
                         )
 
@@ -601,6 +720,49 @@ with col_body:
             # Apply sorting
             if enable_sorting and sort_cols:
                 processed_df = processed_df.sort_values(by=sort_cols, ascending=ascending)
+
+            # Collect current options
+            current_options = {
+                "grouping": {
+                    "enabled": enable_grouping,
+                    "columns": group_cols
+                },
+                "sorting": {
+                    "enabled": enable_sorting,
+                    "columns": sort_cols,
+                    "order": sort_order if enable_sorting else "Ascending"
+                },
+                "filtering": {
+                    "enabled": enable_filtering,
+                    "filter_columns": filter_cols if enable_filtering and 'filter_cols' in locals() else [],
+                    "filter_conditions": filter_conditions,
+                    "column_filter_type": column_filter_type if enable_filtering else "None",
+                    "include_columns": include_columns,
+                    "exclude_columns": exclude_columns
+                }
+            }
+
+            # Save options button
+            if st.button("Save current options", key=f"save_options_{idx}"):
+                # Get the cache_id for this dataframe
+                file_hash = None
+                for cache_id, cache_info in st.session_state.csv_cache.items():
+                    if cache_info["df"].equals(df):
+                        file_hash = cache_id
+                        break
+
+                if file_hash:
+                    # Update the cache with the current options
+                    cache_csv(df, st.session_state.csv_cache[file_hash]["file_name"], current_options)
+
+                    # Update the options in session state
+                    if "dataframe_options" not in st.session_state:
+                        st.session_state.dataframe_options = {}
+                    st.session_state.dataframe_options[idx] = current_options
+
+                    st.success("Options saved successfully!")
+                else:
+                    st.error("Could not find cache entry for this dataframe")
 
             # Download options
             st.subheader(f"Download Options for Table")
@@ -714,12 +876,22 @@ with col_body:
                         # If entry has cache_id, make it clickable
                         if 'cache_id' in entry:
                             if st.button(f"Load: {entry['file_name']}", key=f"history_{idx}"):
-                                # Load the cached CSV
-                                df = get_cached_csv(entry['cache_id'])
+                                # Load the cached CSV and options
+                                df, options = get_cached_csv(entry['cache_id'])
                                 if df is not None:
                                     # Add to dataframes list if not already there
                                     if not any(df.equals(existing_df) for existing_df in st.session_state.dataframes):
+                                        # Store the dataframe
                                         st.session_state.dataframes.append(df)
+
+                                        # Store the options for this dataframe if available
+                                        if options:
+                                            if "dataframe_options" not in st.session_state:
+                                                st.session_state.dataframe_options = {}
+                                            # Use the length of dataframes list - 1 as the index for this dataframe
+                                            df_idx = len(st.session_state.dataframes) - 1
+                                            st.session_state.dataframe_options[df_idx] = options
+
                                         st.success(f"Loaded {entry['file_name']} from history")
                                         st.rerun()
                                     else:
@@ -753,8 +925,19 @@ with col_body:
                 if st.button(f"Load: {cache_info['file_name']}", key=f"load_{cache_id}"):
                     # Add this cached CSV to dataframes for processing
                     df = cache_info['df']
+                    options = cache_info.get('options')
                     if df is not None and not any(df.equals(existing_df) for existing_df in st.session_state.dataframes):
+                        # Store the dataframe
                         st.session_state.dataframes.append(df)
+
+                        # Store the options for this dataframe if available
+                        if options:
+                            if "dataframe_options" not in st.session_state:
+                                st.session_state.dataframe_options = {}
+                            # Use the length of dataframes list - 1 as the index for this dataframe
+                            df_idx = len(st.session_state.dataframes) - 1
+                            st.session_state.dataframe_options[df_idx] = options
+
                         st.success(f"Loaded cached CSV: {cache_info['file_name']}")
                         st.experimental_rerun()
         else:

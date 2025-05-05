@@ -464,23 +464,6 @@ with col_body:
     You can convert each to different document formats.
     """)
 
-    # Display cached CSVs for the current session
-    with st.expander("Current Session Cache", expanded=False):
-        cached_csvs = get_all_cached_csvs()
-        if cached_csvs:
-            st.write("CSVs cached in current session:")
-            for cache_id, cache_info in cached_csvs.items():
-                # Create a button to reload this CSV
-                if st.button(f"Load: {cache_info['file_name']}", key=f"load_{cache_id}"):
-                    # Add this cached CSV to dataframes for processing
-                    df = cache_info['df']
-                    if df is not None and not any(df.equals(existing_df) for existing_df in st.session_state.dataframes):
-                        st.session_state.dataframes.append(df)
-                        st.success(f"Loaded cached CSV: {cache_info['file_name']}")
-                        st.rerun()
-        else:
-            st.write("No CSVs are cached in the current session.")
-
     # File uploader
     uploaded_file = st.file_uploader("Choose a CSV file", type="csv", key="upload")
 
@@ -746,9 +729,45 @@ with col_body:
                         st.write(f"{idx+1}. **Unknown entry format**")
             else:
                 st.write("No CSV files have been uploaded yet.")
+                # Display cached CSVs for the current session
+                with st.expander("Current Session Cache", expanded=False):
+                    cached_csvs = get_all_cached_csvs()
+                    if cached_csvs:
+                        st.write("CSVs cached in current session:")
+                        for cache_id, cache_info in cached_csvs.items():
+                            # Create a button to reload this CSV
+                            if st.button(f"Load: {cache_info['file_name']}", key=f"load_{cache_id}"):
+                                # Add this cached CSV to dataframes for processing
+                                df = cache_info['df']
+                                if df is not None and not any(
+                                        df.equals(existing_df) for existing_df in st.session_state.dataframes):
+                                    st.session_state.dataframes.append(df)
+                                    st.success(f"Loaded cached CSV: {cache_info['file_name']}")
+                                    st.rerun()
+                    else:
+                        st.write("No CSVs are cached in the current session.")
+
         except Exception as e:
             st.error(f"Error loading user history: {e}")
             # Option 1: Just show plain error (preferred)
             st.error(f"Exception: {traceback.format_exc()}")
             # Option 2: For HTML formatting, use markdown (if you really need HTML line breaks)
             # st.markdown(f"**Exception:**<br>{traceback.format_exc().replace(chr(10), '<br>')}", unsafe_allow_html=True)
+
+    # Display cached CSVs for the current session
+    with st.expander("Current Session Cache", expanded=False):
+        cached_csvs = get_all_cached_csvs()
+        if cached_csvs:
+            st.write("CSVs cached in current session:")
+            for cache_id, cache_info in cached_csvs.items():
+                # Create a button to reload this CSV
+                if st.button(f"Load: {cache_info['file_name']}", key=f"load_{cache_id}"):
+                    # Add this cached CSV to dataframes for processing
+                    df = cache_info['df']
+                    if df is not None and not any(df.equals(existing_df) for existing_df in st.session_state.dataframes):
+                        st.session_state.dataframes.append(df)
+                        st.success(f"Loaded cached CSV: {cache_info['file_name']}")
+                        st.rerun()
+        else:
+            st.write("No CSVs are cached in the current session.")
+

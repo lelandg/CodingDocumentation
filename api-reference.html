@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Reference - Coding Documentation</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .content-section {
+            background-color: white;
+            padding: 2rem;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            margin-bottom: 1.5rem;
+        }
+        
+        .content-section h3 {
+            color: var(--primary-color);
+            margin-bottom: 1rem;
+        }
+        
+        .api-method {
+            border-left: 4px solid var(--primary-color);
+            padding-left: 1rem;
+            margin-bottom: 2rem;
+        }
+        
+        .method-name {
+            font-weight: bold;
+            color: var(--secondary-color);
+            font-family: 'Courier New', Courier, monospace;
+            margin-bottom: 0.5rem;
+        }
+        
+        .method-signature {
+            background-color: #f5f5f5;
+            padding: 0.75rem;
+            border-radius: 5px;
+            font-family: 'Courier New', Courier, monospace;
+            overflow-x: auto;
+            margin: 0.5rem 0;
+        }
+        
+        .parameter-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+        
+        .parameter-table th, .parameter-table td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .parameter-table th {
+            background-color: #f5f5f5;
+            font-weight: bold;
+        }
+        
+        .return-value {
+            margin-top: 1rem;
+        }
+        
+        .example-code {
+            background-color: #f5f5f5;
+            padding: 1rem;
+            border-radius: 5px;
+            font-family: 'Courier New', Courier, monospace;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+        
+        .back-link {
+            display: inline-block;
+            margin-top: 1rem;
+            color: var(--primary-color);
+            text-decoration: none;
+            font-weight: bold;
+        }
+        
+        .back-link:hover {
+            text-decoration: underline;
+        }
+        
+        .http-method {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 3px;
+            font-weight: bold;
+            margin-right: 0.5rem;
+        }
+        
+        .get {
+            background-color: #61affe;
+            color: white;
+        }
+        
+        .post {
+            background-color: #49cc90;
+            color: white;
+        }
+        
+        .put {
+            background-color: #fca130;
+            color: white;
+        }
+        
+        .delete {
+            background-color: #f93e3e;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>Coding Documentation</h1>
+            <p class="subtitle">Written in part by AI</p>
+        </div>
+    </header>
+    
+    <main class="container">
+        <h2>API Reference</h2>
+        
+        <div class="content-section">
+            <h3>Introduction to the API</h3>
+            <p>This API reference provides detailed information about the available endpoints, request parameters, and response formats. The API follows RESTful principles and uses JSON for data exchange.</p>
+            <p>Base URL for all API requests: <code>https://api.example.com/v1</code></p>
+            <p>All requests require authentication using an API key that should be included in the header:</p>
+            <div class="example-code">
+Authorization: Bearer YOUR_API_KEY
+            </div>
+        </div>
+        
+        <div class="content-section">
+            <h3>Authentication</h3>
+            <div class="api-method">
+                <div class="method-name"><span class="http-method post">POST</span> /auth/token</div>
+                <p>Generates a new authentication token.</p>
+                
+                <h4>Request Body</h4>
+                <div class="method-signature">
+{
+  "username": "string",
+  "password": "string"
+}
+                </div>
+                
+                <h4>Parameters</h4>
+                <table class="parameter-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Type</th>
+                            <th>Required</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>username</td>
+                            <td>string</td>
+                            <td>Yes</td>
+                            <td>The user's username</td>
+                        </tr>
+                        <tr>
+                            <td>password</td>
+                            <td>string</td>
+                            <td>Yes</td>
+                            <td>The user's password</td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <h4>Response</h4>
+                <div class="method-signature">
+{
+  "token": "string",
+  "expires_at": "ISO8601 timestamp"
+}
+                </div>
+                
+                <h4>Example</h4>
+                <div class="example-code">
+// Request
+fetch('https://api.example.com/v1/auth/token', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    username: 'user123',
+    password: 'securepassword'
+  })
+})
+.then(response => response.json())
+.then(data => console.log(data));
+
+// Response
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "expires_at": "2025-01-01T00:00:00Z"
+}
+                </div>
+            </div>
+        </div>
+        
+        <div class="content-section">
+            <h3>Resources</h3>
+            
+            <div class="api-method">
+                <div class="method-name"><span class="http-method get">GET</span> /users</div>
+                <p>Returns a list of users.</p>
+                
+                <h4>Query Parameters</h4>
+                <table class="parameter-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Type</th>
+                            <th>Required</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>page</td>
+                            <td>integer</td>
+                            <td>No</td>
+                            <td>Page number (default: 1)</td>
+                        </tr>
+                        <tr>
+                            <td>limit</td>
+                            <td>integer</td>
+                            <td>No</td>
+                            <td>Number of items per page (default: 20, max: 100)</td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <h4>Response</h4>
+                <div class="method-signature">
+{
+  "data": [
+    {
+      "id": "string",
+      "username": "string",
+      "email": "string",
+      "created_at": "ISO8601 timestamp"
+    }
+  ],
+  "meta": {
+    "total": "integer",
+    "page": "integer",
+    "limit": "integer"
+  }
+}
+                </div>
+            </div>
+            
+            <div class="api-method">
+                <div class="method-name"><span class="http-method post">POST</span> /users</div>
+                <p>Creates a new user.</p>
+                
+                <h4>Request Body</h4>
+                <div class="method-signature">
+{
+  "username": "string",
+  "email": "string",
+  "password": "string"
+}
+                </div>
+                
+                <h4>Response</h4>
+                <div class="method-signature">
+{
+  "id": "string",
+  "username": "string",
+  "email": "string",
+  "created_at": "ISO8601 timestamp"
+}
+                </div>
+            </div>
+        </div>
+        
+        <a href="index.html" class="back-link">← Back to Home</a>
+    </main>
+    
+    <footer>
+        <div class="container">
+            <p>&copy; 2025 Coding Documentation. Content written in part by AI.</p>
+        </div>
+    </footer>
+</body>
+</html>

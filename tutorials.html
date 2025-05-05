@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tutorials - Coding Documentation</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .content-section {
+            background-color: white;
+            padding: 2rem;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            margin-bottom: 1.5rem;
+        }
+        
+        .content-section h3 {
+            color: var(--primary-color);
+            margin-bottom: 1rem;
+        }
+        
+        .tutorial {
+            margin-bottom: 2rem;
+        }
+        
+        .tutorial-header {
+            background-color: var(--secondary-color);
+            color: white;
+            padding: 1rem;
+            border-radius: 5px 5px 0 0;
+            margin-bottom: 0;
+        }
+        
+        .tutorial-content {
+            border: 1px solid var(--border-color);
+            border-top: none;
+            border-radius: 0 0 5px 5px;
+            padding: 1.5rem;
+            background-color: white;
+        }
+        
+        .step {
+            margin-bottom: 1.5rem;
+            counter-increment: step-counter;
+            position: relative;
+            padding-left: 2.5rem;
+        }
+        
+        .step:before {
+            content: counter(step-counter);
+            position: absolute;
+            left: 0;
+            top: 0;
+            background-color: var(--primary-color);
+            color: white;
+            width: 1.8rem;
+            height: 1.8rem;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+        
+        .step:last-child {
+            margin-bottom: 0;
+        }
+        
+        .step h4 {
+            color: var(--secondary-color);
+            margin-bottom: 0.5rem;
+        }
+        
+        .code-block {
+            background-color: #f5f5f5;
+            padding: 1rem;
+            border-radius: 5px;
+            font-family: 'Courier New', Courier, monospace;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+        
+        .note {
+            background-color: rgba(52, 152, 219, 0.1);
+            border-left: 4px solid var(--primary-color);
+            padding: 1rem;
+            margin: 1rem 0;
+            border-radius: 0 5px 5px 0;
+        }
+        
+        .note-title {
+            font-weight: bold;
+            color: var(--primary-color);
+            margin-bottom: 0.5rem;
+        }
+        
+        .back-link {
+            display: inline-block;
+            margin-top: 1rem;
+            color: var(--primary-color);
+            text-decoration: none;
+            font-weight: bold;
+        }
+        
+        .back-link:hover {
+            text-decoration: underline;
+        }
+        
+        .tutorial-nav {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        
+        .tutorial-nav a {
+            background-color: #f5f5f5;
+            padding: 0.5rem 1rem;
+            border-radius: 5px;
+            text-decoration: none;
+            color: var(--secondary-color);
+            transition: background-color 0.3s ease;
+        }
+        
+        .tutorial-nav a:hover {
+            background-color: #e9ecef;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>Coding Documentation</h1>
+            <p class="subtitle">Written in part by AI</p>
+        </div>
+    </header>
+    
+    <main class="container">
+        <h2>Tutorials</h2>
+        
+        <div class="content-section">
+            <h3>Step-by-Step Guides</h3>
+            <p>These tutorials provide detailed, step-by-step instructions for common programming tasks. Each tutorial is designed to be beginner-friendly while also covering advanced concepts.</p>
+            
+            <div class="tutorial-nav">
+                <a href="#tutorial1">Building a REST API</a>
+                <a href="#tutorial2">Working with Databases</a>
+                <a href="#tutorial3">Implementing Authentication</a>
+            </div>
+        </div>
+        
+        <div id="tutorial1" class="tutorial">
+            <h3 class="tutorial-header">Building a REST API with Node.js and Express</h3>
+            <div class="tutorial-content">
+                <p>This tutorial will guide you through creating a simple REST API using Node.js and Express.</p>
+                
+                <div class="step">
+                    <h4>Set up your project</h4>
+                    <p>First, create a new directory for your project and initialize it with npm:</p>
+                    <div class="code-block">
+mkdir my-rest-api
+cd my-rest-api
+npm init -y
+                    </div>
+                    <p>Install the required dependencies:</p>
+                    <div class="code-block">
+npm install express body-parser
+                    </div>
+                </div>
+                
+                <div class="step">
+                    <h4>Create the server file</h4>
+                    <p>Create a new file called <code>server.js</code> in your project directory:</p>
+                    <div class="code-block">
+// server.js
+const express = require('express');
+const bodyParser = require('body-parser');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Middleware
+app.use(bodyParser.json());
+
+// Sample data
+let users = [
+  { id: 1, name: 'John Doe', email: 'john@example.com' },
+  { id: 2, name: 'Jane Smith', email: 'jane@example.com' }
+];
+
+// Routes
+app.get('/api/users', (req, res) => {
+  res.json(users);
+});
+
+app.get('/api/users/:id', (req, res) => {
+  const user = users.find(u => u.id === parseInt(req.params.id));
+  if (!user) return res.status(404).json({ message: 'User not found' });
+  res.json(user);
+});
+
+app.post('/api/users', (req, res) => {
+  const newUser = {
+    id: users.length + 1,
+    name: req.body.name,
+    email: req.body.email
+  };
+  
+  users.push(newUser);
+  res.status(201).json(newUser);
+});
+
+// Start server
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
+                    </div>
+                </div>
+                
+                <div class="step">
+                    <h4>Start the server</h4>
+                    <p>Run your server with the following command:</p>
+                    <div class="code-block">
+node server.js
+                    </div>
+                    <p>You should see the message: "Server running on port 3000"</p>
+                </div>
+                
+                <div class="step">
+                    <h4>Test your API</h4>
+                    <p>You can test your API using tools like Postman or curl:</p>
+                    <div class="code-block">
+# Get all users
+curl http://localhost:3000/api/users
+
+# Get a specific user
+curl http://localhost:3000/api/users/1
+
+# Create a new user
+curl -X POST -H "Content-Type: application/json" -d '{"name":"Alice Johnson","email":"alice@example.com"}' http://localhost:3000/api/users
+                    </div>
+                </div>
+                
+                <div class="note">
+                    <div class="note-title">Note</div>
+                    <p>This is a basic implementation. In a production environment, you would want to add validation, error handling, and connect to a database instead of using an in-memory array.</p>
+                </div>
+            </div>
+        </div>
+        
+        <div id="tutorial2" class="tutorial">
+            <h3 class="tutorial-header">Working with Databases: MongoDB Integration</h3>
+            <div class="tutorial-content">
+                <p>Learn how to connect your application to a MongoDB database and perform CRUD operations.</p>
+                
+                <div class="step">
+                    <h4>Install MongoDB dependencies</h4>
+                    <p>First, install the MongoDB driver for Node.js:</p>
+                    <div class="code-block">
+npm install mongoose
+                    </div>
+                </div>
+                
+                <div class="step">
+                    <h4>Set up the database connection</h4>
+                    <p>Create a new file called <code>db.js</code> to handle the database connection:</p>
+                    <div class="code-block">
+// db.js
+const mongoose = require('mongoose');
+
+const connectDB = async () => {
+  try {
+    await mongoose.connect('mongodb://localhost:27017/myapp', {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+      useCreateIndex: true
+    });
+    console.log('MongoDB connected successfully');
+  } catch (error) {
+    console.error('MongoDB connection error:', error.message);
+    process.exit(1);
+  }
+};
+
+module.exports = connectDB;
+                    </div>
+                </div>
+                
+                <div class="step">
+                    <h4>Create a model</h4>
+                    <p>Create a models directory and add a User model:</p>
+                    <div class="code-block">
+// models/User.js
+const mongoose = require('mongoose');
+
+const UserSchema = new mongoose.Schema({
+  name: {
+    type: String,
+    required: true
+  },
+  email: {
+    type: String,
+    required: true,
+    unique: true
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now
+  }
+});
+
+module.exports = mongoose.model('User', UserSchema);
+                    </div>
+                </div>
+                
+                <div class="step">
+                    <h4>Update your server to use MongoDB</h4>
+                    <p>Modify your server.js file to use the database:</p>
+                    <div class="code-block">
+// server.js
+const express = require('express');
+const bodyParser = require('body-parser');
+const connectDB = require('./db');
+const User = require('./models/User');
+
+// Connect to database
+connectDB();
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Middleware
+app.use(bodyParser.json());
+
+// Routes
+app.get('/api/users', async (req, res) => {
+  try {
+    const users = await User.find();
+    res.json(users);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.get('/api/users/:id', async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    res.json(user);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.post('/api/users', async (req, res) => {
+  try {
+    const newUser = new User({
+      name: req.body.name,
+      email: req.body.email
+    });
+    
+    const savedUser = await newUser.save();
+    res.status(201).json(savedUser);
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+});
+
+// Start server
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div id="tutorial3" class="tutorial">
+            <h3 class="tutorial-header">Implementing Authentication with JWT</h3>
+            <div class="tutorial-content">
+                <p>Learn how to add JWT (JSON Web Token) authentication to your API.</p>
+                
+                <div class="step">
+                    <h4>Install required packages</h4>
+                    <div class="code-block">
+npm install jsonwebtoken bcryptjs
+                    </div>
+                </div>
+                
+                <div class="step">
+                    <h4>Update the User model</h4>
+                    <p>Add a password field to your User model:</p>
+                    <div class="code-block">
+// models/User.js
+const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
+
+const UserSchema = new mongoose.Schema({
+  name: {
+    type: String,
+    required: true
+  },
+  email: {
+    type: String,
+    required: true,
+    unique: true
+  },
+  password: {
+    type: String,
+    required: true
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now
+  }
+});
+
+// Hash password before saving
+UserSchema.pre('save', async function(next) {
+  if (!this.isModified('password')) {
+    return next();
+  }
+  
+  const salt = await bcrypt.genSalt(10);
+  this.password = await bcrypt.hash(this.password, salt);
+  next();
+});
+
+// Method to compare passwords
+UserSchema.methods.comparePassword = async function(candidatePassword) {
+  return await bcrypt.compare(candidatePassword, this.password);
+};
+
+module.exports = mongoose.model('User', UserSchema);
+                    </div>
+                </div>
+                
+                <div class="step">
+                    <h4>Create authentication routes</h4>
+                    <p>Add routes for registration and login:</p>
+                    <div class="code-block">
+// Add these routes to your server.js
+
+const jwt = require('jsonwebtoken');
+const JWT_SECRET = 'your_jwt_secret'; // In production, use environment variables
+
+// Register a new user
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { name, email, password } = req.body;
+    
+    // Check if user already exists
+    let user = await User.findOne({ email });
+    if (user) {
+      return res.status(400).json({ message: 'User already exists' });
+    }
+    
+    // Create new user
+    user = new User({
+      name,
+      email,
+      password
+    });
+    
+    await user.save();
+    
+    // Create and return JWT
+    const payload = {
+      user: {
+        id: user.id
+      }
+    };
+    
+    jwt.sign(payload, JWT_SECRET, { expiresIn: '1h' }, (err, token) => {
+      if (err) throw err;
+      res.json({ token });
+    });
+    
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Login user
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    
+    // Check if user exists
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(400).json({ message: 'Invalid credentials' });
+    }
+    
+    // Verify password
+    const isMatch = await user.comparePassword(password);
+    if (!isMatch) {
+      return res.status(400).json({ message: 'Invalid credentials' });
+    }
+    
+    // Create and return JWT
+    const payload = {
+      user: {
+        id: user.id
+      }
+    };
+    
+    jwt.sign(payload, JWT_SECRET, { expiresIn: '1h' }, (err, token) => {
+      if (err) throw err;
+      res.json({ token });
+    });
+    
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+                    </div>
+                </div>
+                
+                <div class="step">
+                    <h4>Create middleware for protected routes</h4>
+                    <p>Create a middleware to verify the JWT token:</p>
+                    <div class="code-block">
+// middleware/auth.js
+const jwt = require('jsonwebtoken');
+const JWT_SECRET = 'your_jwt_secret'; // Same secret as in your routes
+
+module.exports = function(req, res, next) {
+  // Get token from header
+  const token = req.header('x-auth-token');
+  
+  // Check if no token
+  if (!token) {
+    return res.status(401).json({ message: 'No token, authorization denied' });
+  }
+  
+  // Verify token
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded.user;
+    next();
+  } catch (error) {
+    res.status(401).json({ message: 'Token is not valid' });
+  }
+};
+                    </div>
+                </div>
+                
+                <div class="step">
+                    <h4>Use the middleware for protected routes</h4>
+                    <p>Apply the middleware to routes that require authentication:</p>
+                    <div class="code-block">
+// In server.js
+const auth = require('./middleware/auth');
+
+// Protected route example
+app.get('/api/profile', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('-password');
+    res.json(user);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+                    </div>
+                </div>
+                
+                <div class="note">
+                    <div class="note-title">Security Note</div>
+                    <p>In a production environment, always store sensitive information like JWT_SECRET in environment variables, not in your code. Also, consider using HTTPS to encrypt data in transit.</p>
+                </div>
+            </div>
+        </div>
+        
+        <a href="index.html" class="back-link">← Back to Home</a>
+    </main>
+    
+    <footer>
+        <div class="container">
+            <p>&copy; 2025 Coding Documentation. Content written in part by AI.</p>
+        </div>
+    </footer>
+</body>
+</html>

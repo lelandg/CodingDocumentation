@@ -1,0 +1,13 @@
+# .gitignore
+data/
+
+# Virtual environment
+.venv/
+
+# PyCharm files
+.idea/
+*.iml
+*.iws
+out/
+
+.streamlit/secrets.toml

@@ -1,3 +1,13 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# CSV to Document Converter
+# ─────────────────────────────────────────────────────────────────────────────
+# This script allows users to upload CSV files and convert them into different document formats (CSV, HTML, DOCX).
+# It also provides options for grouping, sorting, and filtering the data before conversion.
+# In the process of developing a site for documentation, via GitHub Pages,
+# I wanted to create a simple and user-friendly interface for converting CSV files into various document formats.
+# So developed this script to help users easily manage and convert their CSV data into more readable formats.
+# It uses Streamlit for the web interface and Pandas for data manipulation.
+
 import traceback
 import streamlit as st
 import pandas as pd
@@ -11,10 +21,14 @@ from docx import Document
 from docx.shared import Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
+# Set page config - must be the first Streamlit command
+st.set_page_config(page_title="CSV to Document Converter", layout="wide")
+
 # Create a data directory if it doesn't exist
 def ensure_data_dir_exists():
     os.makedirs("data", exist_ok=True)
     os.makedirs("data/users", exist_ok=True)
+    os.makedirs("data/csv_cache", exist_ok=True)
 
 # Ensure the data directory exists
 ensure_data_dir_exists()
@@ -22,35 +36,69 @@ ensure_data_dir_exists()
 # User management functions
 def get_user_id():
     """Get a unique user ID or create one if it doesn't exist"""
+    # Check if user_id exists in session state
     if "user_id" not in st.session_state:
-        if "persistent_user_id" in st.session_state:
+        # Try to get user_id from query parameters (cookie-like behavior)
+        if "user_id" in st.query_params and st.query_params["user_id"]:
+            # Use the user_id from query parameters
+            st.session_state.user_id = st.query_params["user_id"][0]
+        elif "persistent_user_id" in st.session_state:
             # Use previously stored ID
             st.session_state.user_id = st.session_state.persistent_user_id
         else:
             # Generate a new user ID
             st.session_state.user_id = str(uuid.uuid4())
             st.session_state.persistent_user_id = st.session_state.user_id
+            # Store user_id in query parameters (cookie-like behavior)
+            st.query_params["user_id"] = st.session_state.user_id
+
+    # Ensure user_id is always in query parameters
+    if "user_id" not in st.query_params or not st.query_params["user_id"]:
+        st.query_params["user_id"] = st.session_state.user_id
+
     return st.session_state.user_id
 
 def get_user_history_path(user_id):
     """Get path to user's history file"""
     return f"data/users/{user_id}/history.json"
 
-def save_to_user_history(user_id, file_name):
-    # Choose an appropriate path for user history, e.g. data/user_histories/{user_id}.json
+def save_to_user_history(user_id, file_name, cache_id=None):
+    """
+    Save file information to user history
+    If cache_id is provided, it will be used to link to the cached file
+    """
+    # Choose an appropriate path for user history
     history_path = get_user_history_path(user_id)
     os.makedirs(os.path.dirname(history_path), exist_ok=True)
     user_history = []
+
     # Load existing history if it exists
     if os.path.exists(history_path):
         with open(history_path, 'r', encoding='utf-8') as f:
             user_history = json.load(f)
-    # Create a dictionary with file_name and timestamp
-    csv_data = {
-        "file_name": file_name,
-        "timestamp": datetime.now().isoformat()
-    }
-    user_history.append(csv_data)  # Save info needed for "history"
+
+    # Check if this file is already in history
+    file_exists = False
+    for entry in user_history:
+        if isinstance(entry, dict) and entry.get("file_name") == file_name:
+            # Update the existing entry with new timestamp and cache_id
+            entry["timestamp"] = datetime.now().isoformat()
+            if cache_id:
+                entry["cache_id"] = cache_id
+            file_exists = True
+            break
+
+    # If file doesn't exist in history, add it
+    if not file_exists:
+        csv_data = {
+            "file_name": file_name,
+            "timestamp": datetime.now().isoformat()
+        }
+        if cache_id:
+            csv_data["cache_id"] = cache_id
+        user_history.append(csv_data)
+
+    # Save updated history
     with open(history_path, 'w', encoding='utf-8') as f:
         json.dump(user_history, f)
 
@@ -62,28 +110,113 @@ def get_user_history(user_id):
     return []
 
 # CSV cache management
+def ensure_csv_cache_dir_exists():
+    """Create the CSV cache directory if it doesn't exist"""
+    os.makedirs("data/csv_cache", exist_ok=True)
+
+def get_file_hash(df):
+    """Generate a hash for the DataFrame content to use as identifier"""
+    # Convert DataFrame to CSV string and hash it
+    csv_string = df.to_csv(index=False)
+    return str(hash(csv_string))
+
 def cache_csv(df, file_name):
-    """Save DataFrame to session cache with its file name"""
+    """
+    Save DataFrame to session cache and disk cache with its file name
+    Returns a cache_id that can be used to retrieve the DataFrame later
+    """
+    # Ensure cache directory exists
+    ensure_csv_cache_dir_exists()
+
+    # Generate a hash for the file content
+    file_hash = get_file_hash(df)
+
+    # Check if we already have this file in the cache
+    cache_path = f"data/csv_cache/{file_hash}.csv"
+
+    # Save to disk cache if not already there
+    if not os.path.exists(cache_path):
+        df.to_csv(cache_path, index=False)
+
+    # Update the uploaded_files_history.json
+    history_path = "uploaded_files_history.json"
+    history = {}
+    if os.path.exists(history_path):
+        with open(history_path, 'r', encoding='utf-8') as f:
+            try:
+                history = json.load(f)
+            except json.JSONDecodeError:
+                history = {}
+
+    # Store file info in history
+    history[file_hash] = {
+        "file_name": file_name,
+        "cache_path": cache_path,
+        "timestamp": datetime.now().isoformat()
+    }
+
+    with open(history_path, 'w', encoding='utf-8') as f:
+        json.dump(history, f)
+
+    # Also store in session cache for current session
     if "csv_cache" not in st.session_state:
         st.session_state.csv_cache = {}
 
-    # Generate a unique cache ID
-    cache_id = str(uuid.uuid4())
-
-    # Store in cache
-    st.session_state.csv_cache[cache_id] = {
+    st.session_state.csv_cache[file_hash] = {
         "df": df,
         "file_name": file_name,
         "timestamp": datetime.now().isoformat()
     }
 
-    return cache_id
+    return file_hash
 
 def get_cached_csv(cache_id):
-    """Retrieve DataFrame from session cache"""
+    """
+    Retrieve DataFrame from cache (session or disk)
+    Returns the DataFrame or None if not found
+    """
+    # First try session cache
     if "csv_cache" in st.session_state and cache_id in st.session_state.csv_cache:
         return st.session_state.csv_cache[cache_id]["df"]
+
+    # If not in session, try disk cache
+    cache_path = f"data/csv_cache/{cache_id}.csv"
+    if os.path.exists(cache_path):
+        try:
+            df = pd.read_csv(cache_path, dtype=str)
+
+            # Add to session cache for future use
+            if "csv_cache" not in st.session_state:
+                st.session_state.csv_cache = {}
+
+            # Get file name from history
+            file_name = get_file_name_from_history(cache_id)
+
+            st.session_state.csv_cache[cache_id] = {
+                "df": df,
+                "file_name": file_name,
+                "timestamp": datetime.now().isoformat()
+            }
+
+            return df
+        except Exception as e:
+            st.error(f"Error loading cached CSV: {e}")
+
     return None
+
+def get_file_name_from_history(cache_id):
+    """Get the original file name from the history"""
+    history_path = "uploaded_files_history.json"
+    if os.path.exists(history_path):
+        with open(history_path, 'r', encoding='utf-8') as f:
+            try:
+                history = json.load(f)
+                if cache_id in history:
+                    return history[cache_id]["file_name"]
+            except json.JSONDecodeError:
+                pass
+
+    return f"cached_file_{cache_id}.csv"
 
 def get_all_cached_csvs():
     """Get all cached CSVs for the current session"""
@@ -91,17 +224,27 @@ def get_all_cached_csvs():
         st.session_state.csv_cache = {}
     return st.session_state.csv_cache
 
+def get_all_disk_cached_csvs():
+    """Get all CSVs from the disk cache"""
+    history_path = "uploaded_files_history.json"
+    if os.path.exists(history_path):
+        with open(history_path, 'r', encoding='utf-8') as f:
+            try:
+                return json.load(f)
+            except json.JSONDecodeError:
+                pass
+
+    return {}
+
 # Your existing conversion functions
 def convert_df_to_csv(df):
     """Convert DataFrame to CSV string"""
     return df.to_csv(index=False).encode('utf-8')
 
-def convert_df_to_html(df):
-    # … your existing code …
-    # produce raw HTML from the DataFrame (no border or padding yet)
+# python
+def convert_df_to_html(df, doc_title=None):
+    """Convert DataFrame to HTML string with an optional title"""
     html_table = df.to_html(index=False, border=0)
-
-    # inject CSS to style all tables, th, td
     style = """
     <style>
       table, th, td {
@@ -111,9 +254,8 @@ def convert_df_to_html(df):
       }
     </style>
     """
-
-    return style + html_table
-
+    title_html = f"<h1>{doc_title}</h1>" if doc_title else ""
+    return style + title_html + html_table
 
 def convert_df_to_grouped_html(df: pd.DataFrame, group_cols: list[str], doc_title: str) -> str:
     """
@@ -274,8 +416,6 @@ if "dataframes" not in st.session_state:
 # Get the current user ID
 user_id = get_user_id()
 
-st.set_page_config(page_title="CSV to Document Converter", layout="wide")
-
 st.title("CSV to Document Converter")
 st.write("""
 Upload one or more CSV files. Each loaded CSV is displayed in its own table.
@@ -287,10 +427,29 @@ with st.expander("Your CSV History", expanded=False):
     try:
         user_history = get_user_history(user_id)
         if user_history:
-            st.write("Previously uploaded CSV files:")
+            st.write("Previously uploaded CSV files (click to load):")
             for idx, entry in enumerate(user_history):
                 if isinstance(entry, dict) and 'file_name' in entry and 'timestamp' in entry:
-                    st.write(f"{idx+1}. **{entry['file_name']}** - {entry['timestamp']}")
+                    # If entry has cache_id, make it clickable
+                    if 'cache_id' in entry:
+                        if st.button(f"Load: {entry['file_name']}", key=f"history_{idx}"):
+                            # Load the cached CSV
+                            df = get_cached_csv(entry['cache_id'])
+                            if df is not None:
+                                # Add to dataframes list if not already there
+                                if not any(df.equals(existing_df) for existing_df in st.session_state.dataframes):
+                                    st.session_state.dataframes.append(df)
+                                    st.success(f"Loaded {entry['file_name']} from history")
+                                    st.rerun()
+                                else:
+                                    st.info(f"{entry['file_name']} is already loaded")
+                            else:
+                                st.error(f"Could not load {entry['file_name']} from cache")
+                        # Display timestamp separately
+                        st.caption(f"Uploaded: {entry['timestamp']}")
+                    else:
+                        # For entries without cache_id, just display them
+                        st.write(f"{idx+1}. **{entry['file_name']}** - {entry['timestamp']}")
                 elif isinstance(entry, str):
                     # Handle legacy entries that might only contain filenames
                     st.write(f"{idx+1}. **{entry}**")
@@ -300,7 +459,10 @@ with st.expander("Your CSV History", expanded=False):
             st.write("No CSV files have been uploaded yet.")
     except Exception as e:
         st.error(f"Error loading user history: {e}")
-        st.error(f"**Exception:**<br>{traceback.format_exc().replace('\n', '<br>')}")
+        # Option 1: Just show plain error (preferred)
+        st.error(f"Exception: {traceback.format_exc()}")
+        # Option 2: For HTML formatting, use markdown (if you really need HTML line breaks)
+        # st.markdown(f"**Exception:**<br>{traceback.format_exc().replace(chr(10), '<br>')}", unsafe_allow_html=True)
 
 # Display cached CSVs for the current session
 with st.expander("Current Session Cache", expanded=False):
@@ -315,7 +477,7 @@ with st.expander("Current Session Cache", expanded=False):
                 if df is not None and not any(df.equals(existing_df) for existing_df in st.session_state.dataframes):
                     st.session_state.dataframes.append(df)
                     st.success(f"Loaded cached CSV: {cache_info['file_name']}")
-                    st.experimental_rerun()
+                    st.rerun()
     else:
         st.write("No CSVs are cached in the current session.")
 
@@ -329,11 +491,11 @@ if uploaded_file is not None:
         # Add to dataframes list
         st.session_state.dataframes.append(df)
 
-        # Cache the CSV
+        # Cache the CSV and get the cache_id
         cache_id = cache_csv(df, uploaded_file.name)
 
-        # Add to user history
-        save_to_user_history(user_id, uploaded_file.name)
+        # Add to user history with the cache_id
+        save_to_user_history(user_id, uploaded_file.name, cache_id)
 
         st.success(f"Successfully loaded CSV with {df.shape[0]} rows and {df.shape[1]} columns.")
         # download_format = st.selectbox("Format", ["csv", "html", "docx"])
@@ -356,9 +518,9 @@ if uploaded_file is not None:
         #     )
 
     except Exception as e:
-        st.error(f"Error processing the file: {e}")
-        st.write(f"**Exception:**<br>{traceback.format_exc().replace('\n', '<br>')}",
-            unsafe_allow_html=True)
+        st.error(f"Error processing the file")
+        st.error(f"Exception occurred")
+        st.markdown(f"**Exception:**<br>{traceback.format_exc().replace('\n', '<br>')}", unsafe_allow_html=True)
 
 # Display all loaded CSVs in separate tables
 for idx, df in enumerate(st.session_state.dataframes):

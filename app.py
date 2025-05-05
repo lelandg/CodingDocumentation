@@ -51,7 +51,7 @@ float_image_path: str = get_float_image_path()
 st.set_page_config(page_title="CSV to Document Converter", layout="wide", page_icon="favicon.png")
 
 float_image_path = os.path.join(os.path.dirname(__file__), "assets", "favicon_transparent.png")
-st.write(f"Image path: {float_image_path}")
+
 # st.image(float_image_path, use_container_width=False, caption="Your Image", width=150)
 
 # Create a data directory if it doesn't exist

@@ -557,8 +557,13 @@ for idx, df in enumerate(st.session_state.dataframes):
         with tab3:
             enable_filtering = st.checkbox("Enable filtering", key=f"filter_enable_{idx}")
             filter_conditions = {}
+            include_columns = []
+            exclude_columns = []
+
             if enable_filtering:
-                filter_cols = st.multiselect("Select column(s) to filter",
+                # Value filtering
+                st.subheader("Filter by values")
+                filter_cols = st.multiselect("Select column(s) to filter by value",
                                           options=df.columns,
                                           key=f"filter_cols_{idx}")
                 for col in filter_cols:
@@ -569,12 +574,39 @@ for idx, df in enumerate(st.session_state.dataframes):
                     if selected_values:
                         filter_conditions[col] = selected_values
 
+                # Column filtering
+                st.subheader("Filter by columns")
+                column_filter_type = st.radio(
+                    "Column filtering type",
+                    ["None", "Include only", "Exclude only"],
+                    key=f"column_filter_type_{idx}"
+                )
+
+                if column_filter_type == "Include only":
+                    include_columns = st.multiselect(
+                        "Select columns to include in the output",
+                        options=df.columns,
+                        key=f"include_columns_{idx}"
+                    )
+                elif column_filter_type == "Exclude only":
+                    exclude_columns = st.multiselect(
+                        "Select columns to exclude from the output",
+                        options=df.columns,
+                        key=f"exclude_columns_{idx}"
+                    )
+
         # Apply transformations to create the processed dataframe
         processed_df = df.copy()
 
-        # Apply filtering
+        # Apply value filtering
         for col, values in filter_conditions.items():
             processed_df = processed_df[processed_df[col].isin(values)]
+
+        # Apply column filtering (include or exclude)
+        if include_columns:
+            processed_df = processed_df[include_columns]
+        elif exclude_columns:
+            processed_df = processed_df.drop(columns=exclude_columns)
 
         # Apply sorting
         if enable_sorting and sort_cols:
